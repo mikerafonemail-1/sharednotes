@@ -1,7 +1,310 @@
-<script>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notes</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            padding: 25px;
+            box-sizing: border-box;
+        }
+        #notes-container { display: none; }
+        #auth-container { max-width: 400px; }
+        #loading { text-align: center; font-style: italic; color: #888; }
+        .auth-form { display: none; }
+        .auth-form.active { display: block; }
+        .auth-form h2 { text-align: center; color: #4a4a4a; margin-top: 0; }
+        .auth-form input[type="email"],
+        .auth-form input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+        .auth-button {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            font-weight: bold;
+            color: #fff;
+            background-color: #3ecf8e;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin-bottom: 10px;
+        }
+        .auth-button:hover { background-color: #36b17c; }
+        .form-toggle {
+            color: #3ecf8e;
+            text-decoration: underline;
+            cursor: pointer;
+            text-align: center;
+            display: block;
+            margin-top: 15px;
+        }
+        .auth-error {
+            color: red;
+            font-size: 14px;
+            text-align: center;
+            margin-bottom: 10px;
+            min-height: 1.2em;
+        }
+        #notes-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        #notes-header h1 { margin: 0; font-size: 24px; }
+        #logout-button {
+            padding: 8px 12px;
+            font-size: 14px;
+            color: #fff;
+            background-color: #dc3545;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        #logout-button:hover { background-color: #c82333; }
+        #note-input {
+            width: 100%;
+            height: 120px;
+            box-sizing: border-box;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            padding: 10px;
+            font-size: 16px;
+            font-family: inherit;
+            resize: vertical;
+            margin-bottom: 15px;
+        }
+        #note-input:focus { outline: none; border-color: #3ecf8e; }
+        #save-button {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            font-weight: bold;
+            color: #fff;
+            background-color: #3ecf8e;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        #save-button:hover { background-color: #36b17c; }
+        
+        /* Note Item Styles */
+        .note-item {
+            position: relative;
+            background-color: #fdfbe8;
+            border: 1px solid #f0e9c8;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 10px;
+        }
+        .note-item.shared-view {
+             background-color: #f5f5f5;
+             border-color: #ddd;
+        }
+        .note-text {
+            padding-right: 60px; /* Space for buttons */
+            word-wrap: break-word; 
+            white-space: pre-wrap;
+            min-height: 24px;
+        }
+        .note-text[contenteditable="true"] {
+            outline: 1px dashed #3ecf8e;
+            cursor: text;
+        }
+        .note-text[contenteditable="true"]:focus {
+            outline: 2px solid #3ecf8e;
+        }
+        .note-meta {
+            font-size: 12px;
+            color: #999;
+            font-style: italic;
+            margin-top: 10px;
+        }
+        .note-actions {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            gap: 5px;
+        }
+        .share-button, .delete-button {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 1px solid #dcb;
+            background-color: #fff;
+            color: #999;
+            font-size: 16px;
+            font-weight: bold;
+            line-height: 22px;
+            text-align: center;
+            cursor: pointer;
+        }
+        .share-button { font-size: 12px; line-height: 23px; }
+        .delete-button:hover { background-color: #fbecec; color: #c00; border-color: #c00; }
+        .share-button:hover { background-color: #e6f7ff; color: #007bff; border-color: #007bff; }
+        
+        .empty-state { text-align: center; color: #888; font-style: italic; }
+
+        /* Share Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none; /* Hidden by default */
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: #fff;
+            padding: 25px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+        .modal-content h3 { margin-top: 0; }
+        .modal-content input, .modal-content select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 8px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        .modal-share-row { display: flex; gap: 10px; }
+        .modal-share-row select { flex-basis: 100px; }
+        .modal-share-row button { flex-grow: 1; }
+        
+        #current-shares-list {
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        .share-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .share-item-email {
+            font-weight: bold;
+            font-size: 13px;
+        }
+        .share-item-permission {
+            font-size: 12px;
+            color: #555;
+            background: #f0f0f0;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+        .unshare-button {
+            background: none;
+            border: none;
+            color: red;
+            cursor: pointer;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading" class="container">
+        <p>Loading...</p>
+    </div>
+
+    <div id="auth-container" class="container" style="display: none;">
+        <div id="login-form" class="auth-form active">
+            <h2>Login</h2>
+            <p id="login-error" class="auth-error"></p>
+            <input type="email" id="login-email" placeholder="Email" required>
+            <input type="password" id="login-password" placeholder="Password" required>
+            <button id="login-button" class="auth-button">Login</button>
+            <a id="toggle-to-signup" class="form-toggle">Need an account? Sign Up</a>
+        </div>
+        <div id="signup-form" class="auth-form">
+            <h2>Sign Up</h2>
+            <p id="signup-error" class="auth-error"></p>
+            <input type="email" id="signup-email" placeholder="Email" required>
+            <input type="password" id="signup-password" placeholder="Password (min. 6 chars)" required>
+            <button id="signup-button" class="auth-button">Sign Up</button>
+            <a id="toggle-to-login" class="form-toggle">Have an account? Login</a>
+        </div>
+    </div>
+
+    <div id="notes-container" class="container">
+        <div id="notes-header">
+            <h1>My Notes ⚡️</h1>
+            <button id="logout-button">Logout</button>
+        </div>
+        <textarea id="note-input" placeholder="Write your new note here..."></textarea>
+        <button id="save-button">Save Note</button>
+        <div class="notes-display-area">
+            <h2>Saved Notes</h2>
+            <div id="notes-list"></div>
+        </div>
+    </div>
+
+    <div id="share-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h3>Share Note</h3>
+            <p id="share-error" class="auth-error"></p>
+            <div class="modal-share-row">
+                <input type="email" id="share-email" placeholder="Enter user's email">
+                <select id="share-permission">
+                    <option value="view">View</option>
+                    <option value="edit">Edit</option>
+                </select>
+            </div>
+            <button id="share-save-button" class="auth-button">Share</button>
+            
+            <h4>Currently Shared With:</h4>
+            <div id="current-shares-list">
+                <p class="empty-state">Not shared with anyone yet.</p>
+            </div>
+
+            <button id="share-close-button" class="auth-button" style="background-color: #888; margin-top: 15px;">Close</button>
+        </div>
+    </div>
+
+
+    <script>
         // --- Initialize Supabase ---
-        const SUPABASE_URL = 'https://mrowwjmahjpejunhmvrs.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1yb3d3am1haGpwZWp1bmhtdnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE4NDUwMzYsImV4cCI6MjA3NzQyMTAzNn0.5-lmxomtOaYxaV0dfch--HSYEo0Z79yDxgdF7IdCgvw';
+        // TODO: Replace with your project's URL and Anon Key
+        const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+        const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
         
         const { createClient } = supabase;
         const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -106,6 +409,7 @@
         logoutButton.onclick = async () => {
             await supabaseClient.auth.signOut();
         };
+
 
         // --- NOTES APP LOGIC ---
 
@@ -265,7 +569,7 @@
                     noteInput.value = ''; // Clear the input
                     
                     loadNotes(); // Manually refresh list
-                } catch (error)
+                } catch (error) {
                     console.error("Error saving note: ", error);
                 }
                 saveButton.disabled = false;
@@ -278,6 +582,12 @@
          */
         async function handleUpdateNote(noteId, newText) {
             try {
+                // Find the note element on the page
+                const noteElement = document.querySelector(`.note-item[data-note-id="${noteId}"]`);
+                const meta = noteElement.querySelector('.note-meta');
+                const originalMeta = meta.textContent;
+                meta.textContent = "Saving...";
+
                 const { error } = await supabaseClient
                     .from('notes')
                     .update({ text: newText })
@@ -285,10 +595,13 @@
 
                 if (error) {
                     alert("Error saving: " + error.message);
+                    meta.textContent = "Error saving!";
                     throw error;
                 }
-                // No need to call loadNotes() here, as it's disruptive.
-                // The user's screen is already up to date.
+                
+                // Restore original meta text (or "Edited")
+                meta.textContent = originalMeta.includes("Shared") ? originalMeta : "Edited";
+                
             } catch (error) {
                 console.error("Error updating note:", error);
             }
@@ -384,7 +697,7 @@
                 } else {
                     shareEmailInput.value = ''; // Clear input on success
                     loadCurrentShares(currentNoteId); // Refresh modal list
-                    loadNotes(); // Refresh main notes list to show meta tag
+                    loadNotes(); // Refresh main notes list
                 }
             } catch (error) {
                 console.error("Error sharing note:", error);
